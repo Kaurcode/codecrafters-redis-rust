@@ -1,5 +1,6 @@
 #![allow(unused_imports)]
 
+use std::collections::HashMap;
 use std::io::{Error, ErrorKind};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -30,58 +31,105 @@ async fn main() {
 
 }
 
-trait CommandOutput: Send {
-    fn output_bytes(&self) -> Vec<u8>;
+trait CommandRunner: Send {
+    fn run(&self, environment: &mut HashMap<String, String>) -> Vec<u8>;
 }
 
-trait CommandOutputFactory: Sized + CommandOutput where Self: 'static {
+trait CommandOutputFactory: Sized + CommandRunner
+where Self: 'static {
     fn new(arguments: &[&str]) -> Result<Box<Self>, Error>;
 
-    fn new_command_output(arguments: &[&str]) -> Result<Box<dyn CommandOutput>, Error> {
-        Self::new(arguments).map(|box_of_self| box_of_self as Box<dyn CommandOutput>)
+    fn new_command_output(arguments: &[&str]) -> Result<Box<dyn CommandRunner>, Error> {
+        Self::new(arguments).map(|box_of_self| box_of_self as Box<dyn CommandRunner>)
     }
     
 }
 
-struct Ping {}
+struct PingCommand {}
 
-impl CommandOutputFactory for Ping {
+impl CommandOutputFactory for PingCommand {
     fn new(arguments: &[&str]) -> Result<Box<Self>, Error> {
         if arguments.len() != 0 {
             return Err(Error::new(ErrorKind::InvalidInput, "Expected no arguments"));
         }
 
-        Ok(Box::new(Ping {}))
+        Ok(Box::new(PingCommand {}))
     }
 }
 
-impl CommandOutput for Ping {
-    fn output_bytes(&self) -> Vec<u8> {
+impl CommandRunner for PingCommand {
+    fn run(&self, _environment: &mut HashMap<String, String>) -> Vec<u8> {
         b"+PONG\r\n".to_vec()
     }
 }
 
-struct Echo {
+struct EchoCommand {
     body: String,
 }
 
-impl CommandOutputFactory for Echo {
+impl CommandOutputFactory for EchoCommand {
     fn new(arguments: &[&str]) -> Result<Box<Self>, Error> {
         if arguments.len() != 1 {
             return Err(Error::new(ErrorKind::InvalidInput, "Expected a single argument"));
         }
 
-        Ok(Box::new(Echo { body: String::from(arguments[0]) }))
+        Ok(Box::new(EchoCommand { body: String::from(arguments[0]) }))
     }
 }
 
-impl CommandOutput for Echo {
-    fn output_bytes(&self) -> Vec<u8> {
+impl CommandRunner for EchoCommand {
+    fn run(&self, _environment: &mut HashMap<String, String>) -> Vec<u8> {
         format!("${}\r\n{}\r\n", self.body.len(), self.body).into_bytes()
     }
 }
 
-fn redis_parser(command: &str) -> Result<Box<dyn CommandOutput>, Error> {
+struct SetCommand {
+    key: String,
+    value: String,
+}
+
+impl CommandRunner for SetCommand {
+    fn run(&self, environment: &mut HashMap<String, String>) -> Vec<u8> {
+        environment.insert(self.key.clone(), self.value.clone());
+        "+OK\r\n".as_bytes().to_vec()
+    }
+}
+
+impl CommandOutputFactory for SetCommand {
+    fn new(arguments: &[&str]) -> Result<Box<Self>, Error> {
+        if arguments.len() < 2 {
+            return Err(Error::new(ErrorKind::InvalidInput, "Expected at least two arguments"));
+        }
+
+
+        Ok(Box::new(SetCommand { key: String::from(arguments[0]), value: String::from(arguments[1]) }))
+    }
+}
+
+struct GetCommand {
+    key: String,
+}
+
+impl CommandRunner for GetCommand {
+    fn run(&self, environment: &mut HashMap<String, String>) -> Vec<u8> {
+        match environment.get(&self.key) {
+            Some(value) => format!("${}\r\n{}\r\n", value.len(), value).into_bytes(),
+            None => "$-1\r\n".as_bytes().to_vec(),
+        }
+    }
+}
+
+impl CommandOutputFactory for GetCommand {
+    fn new(arguments: &[&str]) -> Result<Box<Self>, Error> {
+        if arguments.len() != 1 {
+            return Err(Error::new(ErrorKind::InvalidInput, "Expected a single argument"));
+        }
+        
+        Ok(Box::new(GetCommand { key: String::from(arguments[0]) }))
+    }
+}
+
+fn redis_parser(command: &str) -> Result<Box<dyn CommandRunner>, Error> {
     let lines: Vec<&str> = command.split("\r\n").collect::<Vec<&str>>();
 
     let argument_count_line: &str = lines.get(0).unwrap();
@@ -141,13 +189,16 @@ fn redis_parser(command: &str) -> Result<Box<dyn CommandOutput>, Error> {
     }
 
     match command.to_ascii_lowercase().as_str() {
-        "ping" => Ping::new_command_output(&verified_arguments),
-        "echo" => Echo::new_command_output(&verified_arguments),
+        "ping" => PingCommand::new_command_output(&verified_arguments),
+        "echo" => EchoCommand::new_command_output(&verified_arguments),
+        "set" => SetCommand::new_command_output(&verified_arguments),
+        "get" => GetCommand::new_command_output(&verified_arguments),
         _ => Err(Error::new(ErrorKind::InvalidInput, "invalid command")),
     }
 }
 
 async fn handle_client(mut stream: TcpStream) {
+    let mut environment: HashMap<String, String> = HashMap::new();
     let mut buffer: [u8; 512] = [0; 512];
 
     while let Ok(buffer_length) = stream.read(&mut buffer).await {
@@ -171,6 +222,6 @@ async fn handle_client(mut stream: TcpStream) {
             }
         };
 
-        stream.write_all(&command.output_bytes()).await.unwrap();
+        stream.write_all(&command.run(&mut environment)).await.unwrap();
     }
 }
