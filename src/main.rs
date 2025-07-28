@@ -2,9 +2,9 @@
 
 use std::collections::HashMap;
 use std::io::{Error, ErrorKind};
+use std::time::{Duration, SystemTime};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::task::JoinHandle;
 
 #[tokio::main]
 async fn main() {
@@ -31,8 +31,13 @@ async fn main() {
 
 }
 
+struct EnvironmentEntity {
+    value: String,
+    expiry: Option<SystemTime>,
+}
+
 trait CommandRunner: Send {
-    fn run(&self, environment: &mut HashMap<String, String>) -> Vec<u8>;
+    fn run(&self, environment: &mut HashMap<String, EnvironmentEntity>) -> Vec<u8>;
 }
 
 trait CommandOutputFactory: Sized + CommandRunner
@@ -58,7 +63,7 @@ impl CommandOutputFactory for PingCommand {
 }
 
 impl CommandRunner for PingCommand {
-    fn run(&self, _environment: &mut HashMap<String, String>) -> Vec<u8> {
+    fn run(&self, _environment: &mut HashMap<String, EnvironmentEntity>) -> Vec<u8> {
         b"+PONG\r\n".to_vec()
     }
 }
@@ -78,7 +83,7 @@ impl CommandOutputFactory for EchoCommand {
 }
 
 impl CommandRunner for EchoCommand {
-    fn run(&self, _environment: &mut HashMap<String, String>) -> Vec<u8> {
+    fn run(&self, _environment: &mut HashMap<String, EnvironmentEntity>) -> Vec<u8> {
         format!("${}\r\n{}\r\n", self.body.len(), self.body).into_bytes()
     }
 }
@@ -86,11 +91,23 @@ impl CommandRunner for EchoCommand {
 struct SetCommand {
     key: String,
     value: String,
+    expiry: Option<Duration>,
 }
 
 impl CommandRunner for SetCommand {
-    fn run(&self, environment: &mut HashMap<String, String>) -> Vec<u8> {
-        environment.insert(self.key.clone(), self.value.clone());
+    fn run(&self, environment: &mut HashMap<String, EnvironmentEntity>) -> Vec<u8> {
+        let calculated_expiry: Option<SystemTime> = match self.expiry {
+            Some(duration) => Some(SystemTime::now() + duration),
+            None => None,
+        };
+        
+        environment.insert(
+            self.key.clone(), 
+            EnvironmentEntity { 
+                value: self.value.clone(), 
+                expiry: calculated_expiry 
+            });
+        
         "+OK\r\n".as_bytes().to_vec()
     }
 }
@@ -101,8 +118,20 @@ impl CommandOutputFactory for SetCommand {
             return Err(Error::new(ErrorKind::InvalidInput, "Expected at least two arguments"));
         }
 
+        if arguments.len() == 4 && arguments[2].eq_ignore_ascii_case("px") {
+            return Ok(Box::new(
+                SetCommand { 
+                    key: String::from(arguments[0]), 
+                    value: String::from(arguments[2]), 
+                    expiry: Some(Duration::from_millis(arguments[3].parse().unwrap())),
+                }));
+        }
 
-        Ok(Box::new(SetCommand { key: String::from(arguments[0]), value: String::from(arguments[1]) }))
+        Ok(Box::new(SetCommand { 
+            key: String::from(arguments[0]), 
+            value: String::from(arguments[1]), 
+            expiry: None 
+        }))
     }
 }
 
@@ -111,9 +140,18 @@ struct GetCommand {
 }
 
 impl CommandRunner for GetCommand {
-    fn run(&self, environment: &mut HashMap<String, String>) -> Vec<u8> {
+    fn run(&self, environment: &mut HashMap<String, EnvironmentEntity>) -> Vec<u8> {
         match environment.get(&self.key) {
-            Some(value) => format!("${}\r\n{}\r\n", value.len(), value).into_bytes(),
+            Some(entity) => {
+                if let Some(expiry) = entity.expiry {
+                    if expiry < SystemTime::now() {
+                        environment.remove(&self.key);
+                        return self.run(environment);
+                    }
+                };
+                let value: String = entity.value.clone();
+                format!("${}\r\n{}\r\n", value.len(), value).into_bytes()
+            },
             None => "$-1\r\n".as_bytes().to_vec(),
         }
     }
@@ -198,7 +236,7 @@ fn redis_parser(command: &str) -> Result<Box<dyn CommandRunner>, Error> {
 }
 
 async fn handle_client(mut stream: TcpStream) {
-    let mut environment: HashMap<String, String> = HashMap::new();
+    let mut environment: HashMap<String, EnvironmentEntity> = HashMap::new();
     let mut buffer: [u8; 512] = [0; 512];
 
     while let Ok(buffer_length) = stream.read(&mut buffer).await {
