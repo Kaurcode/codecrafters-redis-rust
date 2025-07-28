@@ -31,7 +31,7 @@ async fn main() {
 }
 
 trait CommandOutput: Send {
-    fn output_bytes(&self) -> &[u8];
+    fn output_bytes(&self) -> Vec<u8>;
 }
 
 trait CommandOutputFactory: Sized + CommandOutput where Self: 'static {
@@ -56,8 +56,8 @@ impl CommandOutputFactory for Ping {
 }
 
 impl CommandOutput for Ping {
-    fn output_bytes(&self) -> &[u8] {
-        b"+PONG\r\n"
+    fn output_bytes(&self) -> Vec<u8> {
+        b"+PONG\r\n".to_vec()
     }
 }
 
@@ -76,8 +76,8 @@ impl CommandOutputFactory for Echo {
 }
 
 impl CommandOutput for Echo {
-    fn output_bytes(&self) -> &[u8] {
-        self.body.as_bytes()
+    fn output_bytes(&self) -> Vec<u8> {
+        format!("${}\r\n{}\r\n", self.body.len(), self.body).into_bytes()
     }
 }
 
@@ -171,6 +171,6 @@ async fn handle_client(mut stream: TcpStream) {
             }
         };
 
-        stream.write_all(command.output_bytes()).await.unwrap();
+        stream.write_all(&command.output_bytes()).await.unwrap();
     }
 }
