@@ -122,7 +122,7 @@ impl CommandOutputFactory for SetCommand {
             return Ok(Box::new(
                 SetCommand { 
                     key: String::from(arguments[0]), 
-                    value: String::from(arguments[2]), 
+                    value: String::from(arguments[1]), 
                     expiry: Some(Duration::from_millis(arguments[3].parse().unwrap())),
                 }));
         }
