@@ -1,51 +1,32 @@
 #![allow(unused_imports)]
 
-// use std::io::{Read, Write};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-// use std::net::{TcpListener, TcpStream};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::task::JoinHandle;
-// use std::thread;
-// use std::thread::JoinHandle;
 
 #[tokio::main]
 async fn main() {
-    // You can use print statements as follows for debugging, they'll be visible when running tests.
     println!("Logs from your program will appear here!");
-
-    // Uncomment this block to pass the first stage
     
     let listener: TcpListener = TcpListener::bind("127.0.0.1:6379").await.unwrap();
-    
+
     loop {
-        let (socket, _addr) = listener.accept().await.unwrap();
+        let stream = listener.accept().await;
         
-        tokio::spawn(async move {
-            handle_client(socket).await;
-        });
+        match stream {
+            Ok((socket, _addr)) => {
+                println!("accepted new connection");
+
+                tokio::spawn(async move {
+                    handle_client(socket).await;
+                });
+            }
+            Err(e) => {
+                println!("error: {}", e);
+            }
+        }
     }
-    
-//     let handles: Vec<JoinHandle<()>> = listener
-//         .incoming()
-//         .filter_map(|stream| match stream {
-//             Ok(stream) => {
-//                 println!("accepted new connection");
-//                 Some(thread::spawn(move || {
-//                     handle_client(stream);
-//                 }))
-//             }
-//             Err(e) => {
-//                 println!("error: {}", e);
-//                 None
-//             }
-//         })
-//         .collect();
-// 
-//     handles
-//         .into_iter()
-//         .for_each(|handle: JoinHandle<()>| {
-//             handle.join().unwrap()
-//         });
+
 }
 
 async fn handle_client(mut stream: TcpStream) {
