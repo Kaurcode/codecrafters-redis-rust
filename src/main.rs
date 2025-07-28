@@ -1,6 +1,6 @@
 #![allow(unused_imports)]
 
-use std::io::Write;
+use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 
 fn main() {
@@ -26,6 +26,9 @@ fn main() {
 
 fn handle_client(mut stream: TcpStream) {
     loop {
+        let mut buffer = [0; 512];
+        stream.read(&mut buffer).unwrap();
+        
         stream.write_all(b"+PONG\r\n").unwrap();
     }
 }
