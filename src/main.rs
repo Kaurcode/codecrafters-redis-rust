@@ -1,16 +1,29 @@
 #![allow(unused_imports)]
 
+mod command;
+
 use std::collections::HashMap;
 use std::io::{Error, ErrorKind};
 use std::time::{Duration, SystemTime};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::{mpsc, oneshot};
+use crate::command::{CommandRunner, CommandRunnerFactory};
+use crate::command::echo_command::EchoCommand;
+use crate::command::get_command::GetCommand;
+use crate::command::ping_command::PingCommand;
+use crate::command::set_command::SetCommand;
 
 #[tokio::main]
 async fn main() {
     println!("Logs from your program will appear here!");
 
     let listener: TcpListener = TcpListener::bind("127.0.0.1:6379").await.unwrap();
+    let (tx, rx) = mpsc::channel::<Msg>(100);
+
+    tokio::spawn(async move {
+        command_executor(rx).await;
+    });
 
     loop {
         let stream = listener.accept().await;
@@ -18,9 +31,10 @@ async fn main() {
         match stream {
             Ok((socket, _addr)) => {
                 println!("accepted new connection");
+                let tx_clone: mpsc::Sender<Msg> = tx.clone();
 
                 tokio::spawn(async move {
-                    handle_client(socket).await;
+                    handle_client(socket, tx_clone).await;
                 });
             }
             Err(e) => {
@@ -31,212 +45,81 @@ async fn main() {
 
 }
 
+type Msg = (Box<dyn CommandRunner + Send + 'static>, oneshot::Sender<Vec<u8>>);
+
+async fn command_executor(mut rx: mpsc::Receiver<Msg>) {
+    let mut env: HashMap<String, EnvironmentEntity> = HashMap::new();
+
+    while let Some((command, tx)) = rx.recv().await {
+        let _ = tx.send(command.run(&mut env));
+    }
+}
+
 struct EnvironmentEntity {
     value: String,
     expiry: Option<SystemTime>,
 }
 
-trait CommandRunner: Send {
-    fn run(&self, environment: &mut HashMap<String, EnvironmentEntity>) -> Vec<u8>;
-}
-
-trait CommandOutputFactory: Sized + CommandRunner
-where Self: 'static {
-    fn new(arguments: &[&str]) -> Result<Box<Self>, Error>;
-
-    fn new_command_output(arguments: &[&str]) -> Result<Box<dyn CommandRunner>, Error> {
-        Self::new(arguments).map(|box_of_self| box_of_self as Box<dyn CommandRunner>)
+fn parse_bulk_string<'a>(length_line: &str, content: &'a str) -> Result<&'a str, &'static str> {
+    if !length_line.starts_with('$') {
+        return Err("Bulk string length line must start with '$'");
     }
-    
-}
 
-struct PingCommand {}
+    let declared_len: usize = length_line[1..]
+        .parse()
+        .map_err(|_| "Invalid length value")?;
 
-impl CommandOutputFactory for PingCommand {
-    fn new(arguments: &[&str]) -> Result<Box<Self>, Error> {
-        if arguments.len() != 0 {
-            return Err(Error::new(ErrorKind::InvalidInput, "Expected no arguments"));
-        }
-
-        Ok(Box::new(PingCommand {}))
+    if declared_len != content.len() {
+        return Err("Bulk string declared length does not match content length");
     }
-}
 
-impl CommandRunner for PingCommand {
-    fn run(&self, _environment: &mut HashMap<String, EnvironmentEntity>) -> Vec<u8> {
-        b"+PONG\r\n".to_vec()
-    }
-}
-
-struct EchoCommand {
-    body: String,
-}
-
-impl CommandOutputFactory for EchoCommand {
-    fn new(arguments: &[&str]) -> Result<Box<Self>, Error> {
-        if arguments.len() != 1 {
-            return Err(Error::new(ErrorKind::InvalidInput, "Expected a single argument"));
-        }
-
-        Ok(Box::new(EchoCommand { body: String::from(arguments[0]) }))
-    }
-}
-
-impl CommandRunner for EchoCommand {
-    fn run(&self, _environment: &mut HashMap<String, EnvironmentEntity>) -> Vec<u8> {
-        format!("${}\r\n{}\r\n", self.body.len(), self.body).into_bytes()
-    }
-}
-
-struct SetCommand {
-    key: String,
-    value: String,
-    expiry: Option<Duration>,
-}
-
-impl CommandRunner for SetCommand {
-    fn run(&self, environment: &mut HashMap<String, EnvironmentEntity>) -> Vec<u8> {
-        let calculated_expiry: Option<SystemTime> = match self.expiry {
-            Some(duration) => Some(SystemTime::now() + duration),
-            None => None,
-        };
-        
-        environment.insert(
-            self.key.clone(), 
-            EnvironmentEntity { 
-                value: self.value.clone(), 
-                expiry: calculated_expiry 
-            });
-        
-        "+OK\r\n".as_bytes().to_vec()
-    }
-}
-
-impl CommandOutputFactory for SetCommand {
-    fn new(arguments: &[&str]) -> Result<Box<Self>, Error> {
-        if arguments.len() < 2 {
-            return Err(Error::new(ErrorKind::InvalidInput, "Expected at least two arguments"));
-        }
-
-        if arguments.len() == 4 && arguments[2].eq_ignore_ascii_case("px") {
-            return Ok(Box::new(
-                SetCommand { 
-                    key: String::from(arguments[0]), 
-                    value: String::from(arguments[1]), 
-                    expiry: Some(Duration::from_millis(arguments[3].parse().unwrap())),
-                }));
-        }
-
-        Ok(Box::new(SetCommand { 
-            key: String::from(arguments[0]), 
-            value: String::from(arguments[1]), 
-            expiry: None 
-        }))
-    }
-}
-
-struct GetCommand {
-    key: String,
-}
-
-impl CommandRunner for GetCommand {
-    fn run(&self, environment: &mut HashMap<String, EnvironmentEntity>) -> Vec<u8> {
-        match environment.get(&self.key) {
-            Some(entity) => {
-                if let Some(expiry) = entity.expiry {
-                    if expiry < SystemTime::now() {
-                        environment.remove(&self.key);
-                        return self.run(environment);
-                    }
-                };
-                let value: String = entity.value.clone();
-                format!("${}\r\n{}\r\n", value.len(), value).into_bytes()
-            },
-            None => "$-1\r\n".as_bytes().to_vec(),
-        }
-    }
-}
-
-impl CommandOutputFactory for GetCommand {
-    fn new(arguments: &[&str]) -> Result<Box<Self>, Error> {
-        if arguments.len() != 1 {
-            return Err(Error::new(ErrorKind::InvalidInput, "Expected a single argument"));
-        }
-        
-        Ok(Box::new(GetCommand { key: String::from(arguments[0]) }))
-    }
+    Ok(content)
 }
 
 fn redis_parser(command: &str) -> Result<Box<dyn CommandRunner>, Error> {
-    let lines: Vec<&str> = command.split("\r\n").collect::<Vec<&str>>();
+    let lines: Vec<&str> = command.split("\r\n").collect();
 
-    let argument_count_line: &str = lines.get(0).unwrap();
+    let argument_count_line: &str = lines.get(0).ok_or_else(|| {
+        Error::new(ErrorKind::InvalidInput, "Missing argument count line")
+    })?;
+
     if !argument_count_line.starts_with('*') {
-        return Err(Error::new(
-            ErrorKind::InvalidInput, 
-            format!("invalid command: \"{}\", first line should start with '*'", command)));
+        return Err(Error::new(ErrorKind::InvalidInput, "First line should start with '*'"));
     }
-    let mut argument_count: usize = argument_count_line[1..].parse().unwrap();
-    argument_count -= 1;
 
-    let command_length_line: &str = lines.get(1).unwrap();
-    if !command_length_line.starts_with('$') {
-        return Err(Error::new(
-            ErrorKind::InvalidInput,
-            format!("invalid command: \"{}\", second line should start with '$'", command)));
+    let total_parts: usize = argument_count_line[1..]
+        .parse()
+        .map_err(|_| Error::new(ErrorKind::InvalidInput, "Invalid argument count line"))?;
+
+    if lines.len() < 1 + total_parts * 2 {
+        return Err(Error::new(ErrorKind::InvalidInput, "Incomplete command input"));
     }
-    let command_length: usize = command_length_line[1..].parse().unwrap();
-    let command: &str = lines.get(2).unwrap();
-    if command_length != command.len() {
-        return Err(Error::new(
-            ErrorKind::InvalidInput,
-            format!("invalid command length (in bytes) for command \"{}\"; actual length: {}, expected length: {}",
-                    command, command.len(), command_length)));
-    }
+
+    let command = parse_bulk_string(
+        lines.get(1).ok_or(Error::new(ErrorKind::InvalidInput, "Missing command length line"))?,
+        lines.get(2).ok_or(Error::new(ErrorKind::InvalidInput, "Missing command line"))?,
+    ).map_err(|err| Error::new(ErrorKind::InvalidInput, err))?;
 
     let arguments: &[&str] = &lines.as_slice()[3..];
-    if argument_count != arguments.len() / 2 {
-        return Err(Error::new(
-            ErrorKind::InvalidInput,
-            format!("invalid argument count for command: \"{}\"; actual count: {}, expected count: {}",
-                    command, arguments.len() / 2, argument_count)));
-    }
-
+    let argument_count: usize = total_parts - 1;
     let mut verified_arguments: Vec<&str> = Vec::with_capacity(argument_count);
-    for i in 0..argument_count {
-        let argument_length_line_nr: usize = i * 2;
-        let argument_line_nr: usize = i * 2 + 1;
 
-        let argument_length_line: &str = arguments.get(argument_length_line_nr).unwrap();
-        if !argument_length_line.starts_with('$') {
-            return Err(Error::new(
-                ErrorKind::InvalidInput,
-                format!("invalid argument size line in command: \"{}\", argument size line should start with '$'"
-                        , command)));
-        }
-        let argument_length: usize = argument_length_line[1..].parse().unwrap();
-        let argument: &str = arguments.get(argument_line_nr).unwrap();
-        if argument_length != argument.len() {
-            return Err(Error::new(
-                ErrorKind::InvalidInput,
-                format!("invalid argument length (in bytes) for argument \"{}\"; actual length: {}, expected length: {}",
-                        argument, argument.len(), argument_length)));
-        }
-
-        verified_arguments.insert(i, argument);
+    for pair in arguments.chunks_exact(2) {
+        let argument = parse_bulk_string(pair[0], pair[1])
+            .map_err(|err| Error::new(ErrorKind::InvalidInput, err))?;
+        verified_arguments.push(argument);
     }
 
     match command.to_ascii_lowercase().as_str() {
-        "ping" => PingCommand::new_command_output(&verified_arguments),
-        "echo" => EchoCommand::new_command_output(&verified_arguments),
-        "set" => SetCommand::new_command_output(&verified_arguments),
-        "get" => GetCommand::new_command_output(&verified_arguments),
-        _ => Err(Error::new(ErrorKind::InvalidInput, "invalid command")),
+        "ping" => PingCommand::new_command_runner(&verified_arguments),
+        "echo" => EchoCommand::new_command_runner(&verified_arguments),
+        "set" => SetCommand::new_command_runner(&verified_arguments),
+        "get" => GetCommand::new_command_runner(&verified_arguments),
+        _ => Err(Error::new(ErrorKind::InvalidInput, "Unknown command")),
     }
 }
 
-async fn handle_client(mut stream: TcpStream) {
-    let mut environment: HashMap<String, EnvironmentEntity> = HashMap::new();
+async fn handle_client(mut stream: TcpStream, tx: mpsc::Sender<Msg>) {
     let mut buffer: [u8; 512] = [0; 512];
 
     while let Ok(buffer_length) = stream.read(&mut buffer).await {
@@ -260,6 +143,9 @@ async fn handle_client(mut stream: TcpStream) {
             }
         };
 
-        stream.write_all(&command.run(&mut environment)).await.unwrap();
+        let (oneshot_tx, rx): (oneshot::Sender<Vec<u8>>, oneshot::Receiver<Vec<u8>>) = oneshot::channel::<Vec<u8>>();
+        tx.send((command, oneshot_tx)).await.unwrap();
+
+        stream.write_all(&rx.await.unwrap()).await.unwrap();
     }
 }
