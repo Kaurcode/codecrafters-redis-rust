@@ -5,10 +5,10 @@ pub mod get_command;
 
 use std::collections::HashMap;
 use std::io::Error;
-use crate::EnvironmentEntity;
+use crate::key_value_store::KeyValueStoreEntry;
 
 pub trait CommandRunner: Send {
-    fn run(&self, environment: &mut HashMap<String, EnvironmentEntity>) -> Vec<u8>;
+    fn run(&self, environment: &mut HashMap<String, KeyValueStoreEntry>) -> Vec<u8>;
 }
 
 pub trait CommandRunnerFactory: Sized + CommandRunner

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::io::{Error, ErrorKind};
 use crate::command::{CommandRunner, CommandRunnerFactory};
-use crate::EnvironmentEntity;
+use crate::KeyValueStoreEntry;
 
 pub struct EchoCommand {
     body: String,
@@ -18,8 +18,7 @@ impl CommandRunnerFactory for EchoCommand {
 }
 
 impl CommandRunner for EchoCommand {
-    fn run(&self, _environment: &mut HashMap<String, EnvironmentEntity>) -> Vec<u8> {
+    fn run(&self, _environment: &mut HashMap<String, KeyValueStoreEntry>) -> Vec<u8> {
         format!("${}\r\n{}\r\n", self.body.len(), self.body).into_bytes()
     }
 }
-

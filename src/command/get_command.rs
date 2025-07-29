@@ -2,14 +2,14 @@ use std::collections::HashMap;
 use std::io::{Error, ErrorKind};
 use std::time::SystemTime;
 use crate::command::{CommandRunner, CommandRunnerFactory};
-use crate::EnvironmentEntity;
+use crate::KeyValueStoreEntry;
 
 pub struct GetCommand {
     key: String,
 }
 
 impl CommandRunner for GetCommand {
-    fn run(&self, environment: &mut HashMap<String, EnvironmentEntity>) -> Vec<u8> {
+    fn run(&self, environment: &mut HashMap<String, KeyValueStoreEntry>) -> Vec<u8> {
         match environment.get(&self.key) {
             Some(entity) => {
                 if let Some(expiry) = entity.expiry {
@@ -35,4 +35,3 @@ impl CommandRunnerFactory for GetCommand {
         Ok(Box::new(GetCommand { key: String::from(arguments[0]) }))
     }
 }
-

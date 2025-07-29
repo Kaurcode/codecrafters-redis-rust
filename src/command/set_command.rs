@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::io::{Error, ErrorKind};
 use std::time::{Duration, SystemTime};
 use crate::command::{CommandRunner, CommandRunnerFactory};
-use crate::EnvironmentEntity;
+use crate::KeyValueStoreEntry;
 
 pub struct SetCommand {
     key: String,
@@ -11,7 +11,7 @@ pub struct SetCommand {
 }
 
 impl CommandRunner for SetCommand {
-    fn run(&self, environment: &mut HashMap<String, EnvironmentEntity>) -> Vec<u8> {
+    fn run(&self, environment: &mut HashMap<String, KeyValueStoreEntry>) -> Vec<u8> {
         let calculated_expiry: Option<SystemTime> = match self.expiry {
             Some(duration) => Some(SystemTime::now() + duration),
             None => None,
@@ -19,7 +19,7 @@ impl CommandRunner for SetCommand {
 
         environment.insert(
             self.key.clone(),
-            EnvironmentEntity {
+            KeyValueStoreEntry {
                 value: self.value.clone(),
                 expiry: calculated_expiry
             });
@@ -50,4 +50,3 @@ impl CommandRunnerFactory for SetCommand {
         }))
     }
 }
-
