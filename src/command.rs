@@ -1,14 +1,14 @@
-pub mod ping_command;
-pub mod echo_command;
-pub mod set_command;
-pub mod get_command;
+pub mod ping;
+pub mod echo;
+pub mod set;
+pub mod get;
+pub mod rpush;
 
-use std::collections::HashMap;
 use std::io::Error;
-use crate::key_value_store::KeyValueStoreEntry;
+use crate::key_value_store::KeyValueStore;
 
 pub trait CommandRunner: Send {
-    fn run(&self, environment: &mut HashMap<String, KeyValueStoreEntry>) -> Vec<u8>;
+    fn run(&self, store: &mut Box<dyn KeyValueStore>) -> Vec<u8>;
 }
 
 pub trait CommandRunnerFactory: Sized + CommandRunner

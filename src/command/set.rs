@@ -1,8 +1,8 @@
-use std::collections::HashMap;
 use std::io::{Error, ErrorKind};
 use std::time::{Duration, SystemTime};
 use crate::command::{CommandRunner, CommandRunnerFactory};
-use crate::KeyValueStoreEntry;
+use crate::key_value_store::KeyValueStore;
+use crate::KeyValueStoreStringEntry;
 
 pub struct SetCommand {
     key: String,
@@ -11,18 +11,18 @@ pub struct SetCommand {
 }
 
 impl CommandRunner for SetCommand {
-    fn run(&self, environment: &mut HashMap<String, KeyValueStoreEntry>) -> Vec<u8> {
+    fn run(&self, store: &mut Box<dyn KeyValueStore>) -> Vec<u8> {
         let calculated_expiry: Option<SystemTime> = match self.expiry {
             Some(duration) => Some(SystemTime::now() + duration),
             None => None,
         };
 
-        environment.insert(
+        store.insert(
             self.key.clone(),
-            KeyValueStoreEntry {
+            Box::new(KeyValueStoreStringEntry {
                 value: self.value.clone(),
                 expiry: calculated_expiry
-            });
+            }));
 
         "+OK\r\n".as_bytes().to_vec()
     }

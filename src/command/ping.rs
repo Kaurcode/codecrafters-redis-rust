@@ -1,7 +1,6 @@
-use std::collections::HashMap;
 use std::io::{Error, ErrorKind};
 use crate::command::{CommandRunner, CommandRunnerFactory};
-use crate::KeyValueStoreEntry;
+use crate::key_value_store::KeyValueStore;
 
 pub struct PingCommand {}
 
@@ -16,7 +15,7 @@ impl CommandRunnerFactory for PingCommand {
 }
 
 impl CommandRunner for PingCommand {
-    fn run(&self, _environment: &mut HashMap<String, KeyValueStoreEntry>) -> Vec<u8> {
+    fn run(&self, _store: &mut Box<dyn KeyValueStore>) -> Vec<u8> {
         b"+PONG\r\n".to_vec()
     }
 }

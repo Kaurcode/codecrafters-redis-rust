@@ -2,12 +2,11 @@ mod command;
 mod key_value_store;
 mod parser;
 
-use std::collections::HashMap;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, oneshot};
 use crate::command::CommandRunner;
-use crate::key_value_store::KeyValueStoreEntry;
+use crate::key_value_store::{InMemoryKeyValueStore, KeyValueStore, KeyValueStoreStringEntry};
 use crate::parser::redis_parser;
 
 #[tokio::main]
@@ -44,7 +43,7 @@ async fn main() {
 type Msg = (Box<dyn CommandRunner + Send + 'static>, oneshot::Sender<Vec<u8>>);
 
 async fn command_executor(mut rx: mpsc::Receiver<Msg>) {
-    let mut key_value_store: HashMap<String, KeyValueStoreEntry> = HashMap::new();
+    let mut key_value_store: Box<dyn KeyValueStore> = Box::new(InMemoryKeyValueStore::new());
 
     while let Some((command, tx)) = rx.recv().await {
         let _ = tx.send(command.run(&mut key_value_store));
