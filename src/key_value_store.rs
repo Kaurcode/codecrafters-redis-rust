@@ -50,8 +50,10 @@ impl KeyValueStore for InMemoryKeyValueStore {
             return entry.push(value);
         }
         
-        let entry: KeyValueStoreListEntry = KeyValueStoreListEntry::new();
-        self.insert(key, Box::new(entry)).unwrap().push(value)
+        let mut entry: KeyValueStoreListEntry = KeyValueStoreListEntry::new();
+        let return_value: Result<usize, &str> = entry.push(value);
+        self.insert(key, Box::new(entry));
+        return_value
         
     }
 }
