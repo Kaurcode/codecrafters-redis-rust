@@ -12,7 +12,8 @@ pub trait KeyValueStore: Send {
     fn get(&self, key: &String) -> Option<&Box<dyn KeyValueStoreEntry>>;
     fn get_mut(&mut self, key: &String) -> Option<&mut Box<dyn KeyValueStoreEntry>>;
     fn remove(&mut self, key: &String) -> Option<Box<dyn KeyValueStoreEntry>>;
-    fn push(&mut self, key: String, value: String) -> Result<usize, &'static str>;
+    fn _push(&mut self, key: String, value: String) -> Result<usize, &'static str>;
+    fn append(&mut self, key: String, other: &mut Vec<String>) -> Result<usize, &'static str>;
 }
 
 pub struct InMemoryKeyValueStore {
@@ -45,7 +46,7 @@ impl KeyValueStore for InMemoryKeyValueStore {
     fn remove(&mut self, key: &String) -> Option<Box<dyn KeyValueStoreEntry>> {
         self.store.remove(key)
     }
-    fn push(&mut self, key: String, value: String) -> Result<usize, &'static str> {
+    fn _push(&mut self, key: String, value: String) -> Result<usize, &'static str> {
         if let Some(entry) = self.get_mut(&key) {
             return entry.push(value);
         }
@@ -54,7 +55,17 @@ impl KeyValueStore for InMemoryKeyValueStore {
         let return_value: Result<usize, &str> = entry.push(value);
         self.insert(key, Box::new(entry));
         return_value
-        
+    }
+    
+    fn append(&mut self, key: String, other: &mut Vec<String>) -> Result<usize, &'static str> {
+        if let Some(entry) = self.get_mut(&key) {
+            return entry.append(other);
+        }
+
+        let mut entry: KeyValueStoreListEntry = KeyValueStoreListEntry::new();
+        let return_value: Result<usize, &str> = entry.append(other);
+        self.insert(key, Box::new(entry));
+        return_value
     }
 }
 
@@ -62,6 +73,7 @@ pub trait KeyValueStoreEntry: Send {
     fn get_value(&self) -> Result<&String, &'static str>;
     fn get_expiry(&self) -> &Option<SystemTime>;
     fn push(&mut self, value: String) -> Result<usize, &'static str>;
+    fn append(&mut self, other: &mut Vec<String>) -> Result<usize, &'static str>;
 }
 
 pub struct KeyValueStoreStringEntry {
@@ -77,6 +89,9 @@ impl KeyValueStoreEntry for KeyValueStoreStringEntry {
         &self.expiry
     }
     fn push(&mut self, _value: String) -> Result<usize, &'static str> {
+        Err("String value, not list - pushing to a value is not allowed")
+    }
+    fn append(&mut self, _other: &mut Vec<String>) -> Result<usize, &'static str> {
         Err("String value, not list - appending to a value is not allowed")
     }
 }
@@ -111,6 +126,10 @@ impl KeyValueStoreEntry for KeyValueStoreListEntry {
     }
     fn push(&mut self, value: String) -> Result<usize, &'static str> {
         self.list.push(value);
+        Ok(self.list.len())
+    }
+    fn append(&mut self, other: &mut Vec<String>) -> Result<usize, &'static str> {
+        self.list.append(other);
         Ok(self.list.len())
     }
 }

@@ -4,12 +4,12 @@ use crate::key_value_store::KeyValueStore;
 
 pub struct RPushCommand {
     key: String,
-    value: String,
+    values: Vec<String>,
 }
 
 impl CommandRunner for RPushCommand {
     fn run(&self, store: &mut Box<dyn KeyValueStore>) -> Vec<u8> {
-        if let Ok(size) = store.push(self.key.clone(), self.value.clone()) {
+        if let Ok(size) = store.append(self.key.clone(), &mut self.values.clone()) {
             return format!(":{}\r\n", size).into_bytes()
         }
         "$-1\r\n".as_bytes().to_vec()
@@ -18,13 +18,14 @@ impl CommandRunner for RPushCommand {
 
 impl CommandRunnerFactory for RPushCommand {
     fn new(arguments: &[&str]) -> Result<Box<Self>, Error> {
-        if arguments.len() != 2 {
-            return Err(Error::new(ErrorKind::InvalidInput, "Expected two arguments"));
+        if arguments.len() < 2 {
+            return Err(Error::new(ErrorKind::InvalidInput, "Expected at least two arguments"));
         }
-
+        
         Ok(Box::new(
             RPushCommand { 
                 key: String::from(arguments[0]), 
-                value: String::from(arguments[1]) }))
+                values: arguments[1..].iter().map(|s| s.to_string()).collect(),
+            }))
     }
 }
