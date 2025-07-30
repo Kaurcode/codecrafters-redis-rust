@@ -3,6 +3,7 @@ pub mod echo;
 pub mod set;
 pub mod get;
 pub mod rpush;
+pub mod lrange;
 
 use std::io::Error;
 use crate::key_value_store::KeyValueStore;

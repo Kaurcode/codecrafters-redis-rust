@@ -14,6 +14,7 @@ pub trait KeyValueStore: Send {
     fn remove(&mut self, key: &String) -> Option<Box<dyn KeyValueStoreEntry>>;
     fn _push(&mut self, key: String, value: String) -> Result<usize, &'static str>;
     fn append(&mut self, key: String, other: &mut Vec<String>) -> Result<usize, &'static str>;
+    fn get_subslice(&self, key: &String, start: usize, end: usize) -> Result<&[String], &'static str>;
 }
 
 pub struct InMemoryKeyValueStore {
@@ -67,6 +68,16 @@ impl KeyValueStore for InMemoryKeyValueStore {
         self.insert(key, Box::new(entry));
         return_value
     }
+    
+    fn get_subslice(&self, key: &String, start: usize, end: usize) -> Result<&[String], &'static str> {
+        if let Some(entry) = self.get(&key) {
+            return match entry.get_subslice(start, end) {
+                Ok(slice) => Ok(slice.unwrap_or_else(|| &[])),
+                Err(s) => Err(s),
+            }
+        }
+        Ok(&[])
+    }
 }
 
 pub trait KeyValueStoreEntry: Send {
@@ -74,6 +85,7 @@ pub trait KeyValueStoreEntry: Send {
     fn get_expiry(&self) -> &Option<SystemTime>;
     fn push(&mut self, value: String) -> Result<usize, &'static str>;
     fn append(&mut self, other: &mut Vec<String>) -> Result<usize, &'static str>;
+    fn get_subslice(&self, start: usize, end: usize) -> Result<Option<&[String]>, &'static str>;
 }
 
 pub struct KeyValueStoreStringEntry {
@@ -93,6 +105,9 @@ impl KeyValueStoreEntry for KeyValueStoreStringEntry {
     }
     fn append(&mut self, _other: &mut Vec<String>) -> Result<usize, &'static str> {
         Err("String value, not list - appending to a value is not allowed")
+    }
+    fn get_subslice(&self, _start: usize, _end: usize) -> Result<Option<&[String]>, &'static str> {
+        Err("String value, not list - getting a subslice is not allowed")
     }
 }
 
@@ -131,5 +146,11 @@ impl KeyValueStoreEntry for KeyValueStoreListEntry {
     fn append(&mut self, other: &mut Vec<String>) -> Result<usize, &'static str> {
         self.list.append(other);
         Ok(self.list.len())
+    }
+    fn get_subslice(&self, start: usize, mut end: usize) -> Result<Option<&[String]>, &'static str> {
+        if self.list.len() <= end {
+            end = self.list.len() - 1;
+        }
+        Ok(self.list.get(start..=end))
     }
 }
