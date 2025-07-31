@@ -1,4 +1,4 @@
-use std::cmp::max;
+use std::cmp::min;
 use std::collections::HashMap;
 use std::time::SystemTime;
 
@@ -131,7 +131,7 @@ impl KeyValueStoreEntry for KeyValueStoreListEntry {
         Ok(self.list.len())
     }
     fn pop_front(&mut self, mut amount: usize) -> Result<Vec<String>, &'static str> {
-        amount = max(amount, self.list.len());
+        amount = min(amount, self.list.len());
         Ok(self.list.drain(..amount).collect())
     }
     fn get_subslice(&self, start: isize, end: isize) -> Result<Option<&[String]>, &'static str> {
