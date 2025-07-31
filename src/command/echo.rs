@@ -17,7 +17,7 @@ impl CommandRunnerFactory for EchoCommand {
 }
 
 impl CommandRunner for EchoCommand {
-    fn run(&self, _store: &mut Box<dyn KeyValueStore>) -> Vec<u8> {
+    fn run(self: Box<Self>, _store: &mut Box<dyn KeyValueStore>) -> Vec<u8> {
         format!("${}\r\n{}\r\n", self.body.len(), self.body).into_bytes()
     }
 }

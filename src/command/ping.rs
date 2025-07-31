@@ -15,7 +15,7 @@ impl CommandRunnerFactory for PingCommand {
 }
 
 impl CommandRunner for PingCommand {
-    fn run(&self, _store: &mut Box<dyn KeyValueStore>) -> Vec<u8> {
+    fn run(self: Box<Self>, _store: &mut Box<dyn KeyValueStore>) -> Vec<u8> {
         b"+PONG\r\n".to_vec()
     }
 }

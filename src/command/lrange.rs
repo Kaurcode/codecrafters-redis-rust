@@ -4,13 +4,26 @@ use crate::key_value_store::KeyValueStore;
 
 pub struct LRange {
     key: String,
-    start: usize,
-    end: usize,
+    start: isize,
+    end: isize,
+}
+
+fn get_subslice<'a>(
+    store: &'a mut Box<dyn KeyValueStore>, key: &String, start: isize, end: isize
+) -> Result<&'a [String], &'static str> {
+    
+    if let Some(entry) = store.get(&key) {
+        return match entry.get_subslice(start, end) {
+            Ok(slice) => Ok(slice.unwrap_or_else(|| &[])),
+            Err(s) => Err(s),
+        }
+    }
+    Ok(&[])
 }
 
 impl CommandRunner for LRange {
-    fn run(&self, store: &mut Box<dyn KeyValueStore>) -> Vec<u8> {
-        if let Ok(slice) = store.get_subslice(&self.key, self.start, self.end) {
+    fn run(self: Box<Self>, store: &mut Box<dyn KeyValueStore>) -> Vec<u8> {
+        if let Ok(slice) = get_subslice(store, &self.key, self.start, self.end) {
             let body: String = slice
                 .iter()
                 .map(|value: &String| format!("${}\r\n{}\r\n", value.len(), value))

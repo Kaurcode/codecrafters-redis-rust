@@ -8,7 +8,7 @@ pub struct GetCommand {
 }
 
 impl CommandRunner for GetCommand {
-    fn run(&self, store: &mut Box<dyn KeyValueStore>) -> Vec<u8> {
+    fn run(self: Box<Self>, store: &mut Box<dyn KeyValueStore>) -> Vec<u8> {
         match store.get(&self.key) {
             Some(entity) => {
                 if let Some(expiry) = entity.get_expiry() {

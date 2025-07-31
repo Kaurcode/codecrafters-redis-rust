@@ -9,7 +9,7 @@ use std::io::Error;
 use crate::key_value_store::KeyValueStore;
 
 pub trait CommandRunner: Send {
-    fn run(&self, store: &mut Box<dyn KeyValueStore>) -> Vec<u8>;
+    fn run(self: Box<Self>, store: &mut Box<dyn KeyValueStore>) -> Vec<u8>;
 }
 
 pub trait CommandRunnerFactory: Sized + CommandRunner

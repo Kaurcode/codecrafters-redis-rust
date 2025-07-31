@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::time::SystemTime;
 
-
 pub trait KeyValueStore: Send {
     fn insert(
         &mut self, 
@@ -12,9 +11,6 @@ pub trait KeyValueStore: Send {
     fn get(&self, key: &String) -> Option<&Box<dyn KeyValueStoreEntry>>;
     fn get_mut(&mut self, key: &String) -> Option<&mut Box<dyn KeyValueStoreEntry>>;
     fn remove(&mut self, key: &String) -> Option<Box<dyn KeyValueStoreEntry>>;
-    fn _push(&mut self, key: String, value: String) -> Result<usize, &'static str>;
-    fn append(&mut self, key: String, other: &mut Vec<String>) -> Result<usize, &'static str>;
-    fn get_subslice(&self, key: &String, start: usize, end: usize) -> Result<&[String], &'static str>;
 }
 
 pub struct InMemoryKeyValueStore {
@@ -47,45 +43,14 @@ impl KeyValueStore for InMemoryKeyValueStore {
     fn remove(&mut self, key: &String) -> Option<Box<dyn KeyValueStoreEntry>> {
         self.store.remove(key)
     }
-    fn _push(&mut self, key: String, value: String) -> Result<usize, &'static str> {
-        if let Some(entry) = self.get_mut(&key) {
-            return entry.push(value);
-        }
-        
-        let mut entry: KeyValueStoreListEntry = KeyValueStoreListEntry::new();
-        let return_value: Result<usize, &str> = entry.push(value);
-        self.insert(key, Box::new(entry));
-        return_value
-    }
-    
-    fn append(&mut self, key: String, other: &mut Vec<String>) -> Result<usize, &'static str> {
-        if let Some(entry) = self.get_mut(&key) {
-            return entry.append(other);
-        }
-
-        let mut entry: KeyValueStoreListEntry = KeyValueStoreListEntry::new();
-        let return_value: Result<usize, &str> = entry.append(other);
-        self.insert(key, Box::new(entry));
-        return_value
-    }
-    
-    fn get_subslice(&self, key: &String, start: usize, end: usize) -> Result<&[String], &'static str> {
-        if let Some(entry) = self.get(&key) {
-            return match entry.get_subslice(start, end) {
-                Ok(slice) => Ok(slice.unwrap_or_else(|| &[])),
-                Err(s) => Err(s),
-            }
-        }
-        Ok(&[])
-    }
 }
 
 pub trait KeyValueStoreEntry: Send {
     fn get_value(&self) -> Result<&String, &'static str>;
     fn get_expiry(&self) -> &Option<SystemTime>;
-    fn push(&mut self, value: String) -> Result<usize, &'static str>;
+    fn _push(&mut self, value: String) -> Result<usize, &'static str>;
     fn append(&mut self, other: &mut Vec<String>) -> Result<usize, &'static str>;
-    fn get_subslice(&self, start: usize, end: usize) -> Result<Option<&[String]>, &'static str>;
+    fn get_subslice(&self, start: isize, end: isize) -> Result<Option<&[String]>, &'static str>;
 }
 
 pub struct KeyValueStoreStringEntry {
@@ -100,13 +65,13 @@ impl KeyValueStoreEntry for KeyValueStoreStringEntry {
     fn get_expiry(&self) -> &Option<SystemTime> {
         &self.expiry
     }
-    fn push(&mut self, _value: String) -> Result<usize, &'static str> {
+    fn _push(&mut self, _value: String) -> Result<usize, &'static str> {
         Err("String value, not list - pushing to a value is not allowed")
     }
     fn append(&mut self, _other: &mut Vec<String>) -> Result<usize, &'static str> {
         Err("String value, not list - appending to a value is not allowed")
     }
-    fn get_subslice(&self, _start: usize, _end: usize) -> Result<Option<&[String]>, &'static str> {
+    fn get_subslice(&self, _start: isize, _end: isize) -> Result<Option<&[String]>, &'static str> {
         Err("String value, not list - getting a subslice is not allowed")
     }
 }
@@ -139,7 +104,7 @@ impl KeyValueStoreEntry for KeyValueStoreListEntry {
     fn get_expiry(&self) -> &Option<SystemTime> {
         &self.expiry
     }
-    fn push(&mut self, value: String) -> Result<usize, &'static str> {
+    fn _push(&mut self, value: String) -> Result<usize, &'static str> {
         self.list.push(value);
         Ok(self.list.len())
     }
@@ -147,10 +112,23 @@ impl KeyValueStoreEntry for KeyValueStoreListEntry {
         self.list.append(other);
         Ok(self.list.len())
     }
-    fn get_subslice(&self, start: usize, mut end: usize) -> Result<Option<&[String]>, &'static str> {
-        if self.list.len() <= end {
-            end = self.list.len() - 1;
+    fn get_subslice(&self, start: isize, end: isize) -> Result<Option<&[String]>, &'static str> {
+        let list_length: usize = self.list.len();
+        
+        let start: usize = normalize_index(start, list_length);
+        let mut end: usize = normalize_index(end, list_length);
+        
+        if list_length <= end {
+            end = list_length - 1;
         }
+        
         Ok(self.list.get(start..=end))
     }
+}
+
+fn normalize_index(index: isize, list_length: usize) -> usize { 
+    if index < 0 { 
+        return list_length - (-1 * index) as usize; 
+    }
+    index as usize
 }

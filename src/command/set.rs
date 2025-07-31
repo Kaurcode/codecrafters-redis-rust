@@ -11,16 +11,16 @@ pub struct SetCommand {
 }
 
 impl CommandRunner for SetCommand {
-    fn run(&self, store: &mut Box<dyn KeyValueStore>) -> Vec<u8> {
+    fn run(self: Box<Self>, store: &mut Box<dyn KeyValueStore>) -> Vec<u8> {
         let calculated_expiry: Option<SystemTime> = match self.expiry {
             Some(duration) => Some(SystemTime::now() + duration),
             None => None,
         };
 
         store.insert(
-            self.key.clone(),
+            self.key,
             Box::new(KeyValueStoreStringEntry {
-                value: self.value.clone(),
+                value: self.value,
                 expiry: calculated_expiry
             }));
 
