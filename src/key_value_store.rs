@@ -128,7 +128,11 @@ impl KeyValueStoreEntry for KeyValueStoreListEntry {
 
 fn normalize_index(index: isize, list_length: usize) -> usize { 
     if index < 0 { 
-        return list_length - (-1 * index) as usize; 
+        let normalized_index: usize = (-1 * index) as usize;
+        if list_length < normalized_index {
+            return 0;
+        }
+        return list_length - normalized_index; 
     }
     index as usize
 }
