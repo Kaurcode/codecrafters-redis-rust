@@ -13,7 +13,7 @@ impl CommandRunner for LLenCommand {
                 return format!(":{}\r\n", length).into_bytes()
             }
         }
-        "$-1\r\n".as_bytes().to_vec()
+        ":0\r\n".as_bytes().to_vec()
     }
 }
 
