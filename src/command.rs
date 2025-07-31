@@ -6,6 +6,7 @@ pub mod rpush;
 pub mod lrange;
 pub mod lpush;
 pub mod llen;
+pub mod lpop;
 
 use std::io::Error;
 use crate::key_value_store::KeyValueStore;

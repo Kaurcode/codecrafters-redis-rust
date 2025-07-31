@@ -3,6 +3,7 @@ use crate::command::{CommandRunner, CommandRunnerFactory};
 use crate::command::echo::EchoCommand;
 use crate::command::get::GetCommand;
 use crate::command::llen::LLenCommand;
+use crate::command::lpop::LPopCommand;
 use crate::command::lpush::LPushCommand;
 use crate::command::lrange::LRangeCommand;
 use crate::command::ping::PingCommand;
@@ -68,6 +69,7 @@ pub fn redis_parser(command: &str) -> Result<Box<dyn CommandRunner>, Error> {
         "lpush" => LPushCommand::new_command_runner(&verified_arguments),
         "lrange" => LRangeCommand::new_command_runner(&verified_arguments),
         "llen" => LLenCommand::new_command_runner(&verified_arguments),
+        "lpop" => LPopCommand::new_command_runner(&verified_arguments),
         _ => Err(Error::new(ErrorKind::InvalidInput, "Unknown command")),
     }
 }
