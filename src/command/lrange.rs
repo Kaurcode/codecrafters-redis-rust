@@ -2,7 +2,7 @@ use std::io::{Error, ErrorKind};
 use crate::command::{CommandRunner, CommandRunnerFactory};
 use crate::key_value_store::KeyValueStore;
 
-pub struct LRange {
+pub struct LRangeCommand {
     key: String,
     start: isize,
     end: isize,
@@ -21,7 +21,7 @@ fn get_subslice<'a>(
     Ok(&[])
 }
 
-impl CommandRunner for LRange {
+impl CommandRunner for LRangeCommand {
     fn run(self: Box<Self>, store: &mut Box<dyn KeyValueStore>) -> Vec<u8> {
         if let Ok(slice) = get_subslice(store, &self.key, self.start, self.end) {
             let body: String = slice
@@ -34,13 +34,13 @@ impl CommandRunner for LRange {
     }
 }
 
-impl CommandRunnerFactory for LRange {
+impl CommandRunnerFactory for LRangeCommand {
     fn new(arguments: &[&str]) -> Result<Box<Self>, Error> {
         if arguments.len() != 3 {
             return Err(Error::new(ErrorKind::InvalidInput, "Expected exactly three arguments"));
         }
         Ok(Box::new(
-            LRange {
+            LRangeCommand {
                 key: String::from(arguments[0]),
                 start: arguments[1].parse().unwrap(),
                 end: arguments[2].parse().unwrap(),

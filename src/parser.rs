@@ -2,8 +2,9 @@ use std::io::{Error, ErrorKind};
 use crate::command::{CommandRunner, CommandRunnerFactory};
 use crate::command::echo::EchoCommand;
 use crate::command::get::GetCommand;
+use crate::command::llen::LLenCommand;
 use crate::command::lpush::LPushCommand;
-use crate::command::lrange::LRange;
+use crate::command::lrange::LRangeCommand;
 use crate::command::ping::PingCommand;
 use crate::command::rpush::RPushCommand;
 use crate::command::set::SetCommand;
@@ -65,7 +66,8 @@ pub fn redis_parser(command: &str) -> Result<Box<dyn CommandRunner>, Error> {
         "get" => GetCommand::new_command_runner(&verified_arguments),
         "rpush" => RPushCommand::new_command_runner(&verified_arguments),
         "lpush" => LPushCommand::new_command_runner(&verified_arguments),
-        "lrange" => LRange::new_command_runner(&verified_arguments),
+        "lrange" => LRangeCommand::new_command_runner(&verified_arguments),
+        "llen" => LLenCommand::new_command_runner(&verified_arguments),
         _ => Err(Error::new(ErrorKind::InvalidInput, "Unknown command")),
     }
 }
