@@ -50,7 +50,9 @@ pub trait KeyValueStoreEntry: Send {
     fn get_expiry(&self) -> &Option<SystemTime>;
     fn _push(&mut self, value: String) -> Result<usize, &'static str>;
     fn append(&mut self, other: &mut Vec<String>) -> Result<usize, &'static str>;
+    fn prepend(&mut self, other: Vec<String>) -> Result<usize, &'static str>;
     fn get_subslice(&self, start: isize, end: isize) -> Result<Option<&[String]>, &'static str>;
+    fn len(&self) -> Result<usize, &'static str>;
 }
 
 pub struct KeyValueStoreStringEntry {
@@ -71,8 +73,14 @@ impl KeyValueStoreEntry for KeyValueStoreStringEntry {
     fn append(&mut self, _other: &mut Vec<String>) -> Result<usize, &'static str> {
         Err("String value, not list - appending to a value is not allowed")
     }
+    fn prepend(&mut self, _other: Vec<String>) -> Result<usize, &'static str> {
+        Err("String value, not list - prepending to a value is not allowed")
+    }
     fn get_subslice(&self, _start: isize, _end: isize) -> Result<Option<&[String]>, &'static str> {
         Err("String value, not list - getting a subslice is not allowed")
+    }
+    fn len(&self) -> Result<usize, &'static str> {
+        Ok(self.value.len())
     }
 }
 
@@ -112,6 +120,11 @@ impl KeyValueStoreEntry for KeyValueStoreListEntry {
         self.list.append(other);
         Ok(self.list.len())
     }
+    fn prepend(&mut self, mut other: Vec<String>) -> Result<usize, &'static str> {
+        other.append(&mut self.list);
+        self.list = other;
+        Ok(self.list.len())
+    }
     fn get_subslice(&self, start: isize, end: isize) -> Result<Option<&[String]>, &'static str> {
         let list_length: usize = self.list.len();
         
@@ -123,6 +136,9 @@ impl KeyValueStoreEntry for KeyValueStoreListEntry {
         }
         
         Ok(self.list.get(start..=end))
+    }
+    fn len(&self) -> Result<usize, &'static str> {
+        Ok(self.list.len())
     }
 }
 
