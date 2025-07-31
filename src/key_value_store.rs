@@ -52,7 +52,8 @@ pub trait KeyValueStoreEntry: Send {
     fn _push(&mut self, value: String) -> Result<usize, &'static str>;
     fn append(&mut self, other: &mut Vec<String>) -> Result<usize, &'static str>;
     fn prepend(&mut self, other: Vec<String>) -> Result<usize, &'static str>;
-    fn pop_front(&mut self, amount: usize) -> Result<Vec<String>, &'static str>;
+    fn pop_front(&mut self) -> Result<String, &'static str>;
+    fn pop_front_amount(&mut self, amount: usize) -> Result<Vec<String>, &'static str>;
     fn get_subslice(&self, start: isize, end: isize) -> Result<Option<&[String]>, &'static str>;
     fn len(&self) -> Result<usize, &'static str>;
 }
@@ -78,7 +79,10 @@ impl KeyValueStoreEntry for KeyValueStoreStringEntry {
     fn prepend(&mut self, _other: Vec<String>) -> Result<usize, &'static str> {
         Err("String value, not list - prepending to a value is not allowed")
     }
-    fn pop_front(&mut self, _amount: usize) -> Result<Vec<String>, &'static str> {
+    fn pop_front(&mut self) -> Result<String, &'static str> {
+        Err("String value, not list - pop to a value is not allowed")
+    }
+    fn pop_front_amount(&mut self, _amount: usize) -> Result<Vec<String>, &'static str> {
         Err("String value, not list - pop to a value is not allowed")
     }
     fn get_subslice(&self, _start: isize, _end: isize) -> Result<Option<&[String]>, &'static str> {
@@ -130,7 +134,10 @@ impl KeyValueStoreEntry for KeyValueStoreListEntry {
         self.list = other;
         Ok(self.list.len())
     }
-    fn pop_front(&mut self, mut amount: usize) -> Result<Vec<String>, &'static str> {
+    fn pop_front(&mut self) -> Result<String, &'static str> {
+        Ok(self.list.remove(0))
+    }
+    fn pop_front_amount(&mut self, mut amount: usize) -> Result<Vec<String>, &'static str> {
         amount = min(amount, self.list.len());
         Ok(self.list.drain(..amount).collect())
     }
