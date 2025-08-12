@@ -1,52 +1,80 @@
 use std::io::{Error, ErrorKind};
-use crate::command::{CommandRunner, CommandRunnerFactory};
+use crate::command::{DataRequester, CommandFactory, CommandRunner};
 use crate::key_value_store::KeyValueStore;
 
-pub struct LPopCommand {
+pub struct LPopRequest {
     key: String,
     amount: Option<usize>,
 }
 
-impl CommandRunner for LPopCommand {
-    fn run(self: Box<Self>, store: &mut Box<dyn KeyValueStore>) -> Vec<u8> {
-        store.get_mut(&self.key)
-            .and_then(|entity| match self.amount {
-                Some(amount) => entity
-                    .pop_front_amount(amount)
-                    .ok()
-                    .filter(|vec| !vec.is_empty())
-                    .map(|values| { 
-                        let body: String = values
-                            .iter()
-                            .map(|value| format!("${}\r\n{}\r\n", value.len(), value))
-                            .collect();
-                        format!("*{}\r\n{}", values.len(), body).into_bytes()
-                    }),
-                None => entity.pop_front().ok().map(|value| 
-                    format!("${}\r\n{}\r\n", value.len(), value).into_bytes()
-                ),
-            })
-            .unwrap_or_else(|| b"$-1\r\n".to_vec())
-    }
+enum OneOrMany {
+    One(String),
+    Many(Vec<String>),
 }
 
-impl CommandRunnerFactory for LPopCommand {
+struct LPopResponse {
+    response: Result<OneOrMany, &'static str>,
+}
+
+impl CommandFactory for LPopRequest {
     fn new(arguments: &[&str]) -> Result<Box<Self>, Error> {
         let argument_count = arguments.len();
         if argument_count == 1 {
             return Ok(Box::new(
-                LPopCommand {
+                LPopRequest {
                     key: String::from(arguments[0]),
                     amount: None }));
         }
         if argument_count == 2 {
             return Ok(Box::new(
-                LPopCommand {
+                LPopRequest {
                     key: String::from(arguments[0]),
-                    amount: Some(arguments[1].parse().unwrap())
+                    amount: Some(arguments[1].parse().map_err(|_| Error::new(
+                        ErrorKind::InvalidInput, "COUNT must be an unsigned integer"
+                    ))?)
                 }
             ))
         }
         Err(Error::new(ErrorKind::InvalidInput, "Expected one or two arguments"))
+    }
+}
+
+impl LPopResponse {
+    fn new(response: Result<OneOrMany, &'static str>) -> Self {
+        Self { response }
+    }
+}
+
+impl DataRequester for LPopRequest {
+    fn request(self: Box<Self>, store: &mut Box<dyn KeyValueStore>) -> Box<dyn CommandRunner> {
+        let popped_values = store.get_mut(&self.key)
+            .map(|entity| match self.amount {
+                None => entity.pop_front().map(|value| OneOrMany::One(value)),
+                Some(amount) => entity.pop_front_amount(amount).map(|values| OneOrMany::Many(values)),
+            }).unwrap_or(Err("No such key"));
+        
+        Box::new(LPopResponse::new(popped_values))
+    }
+}
+
+impl CommandRunner for LPopResponse {
+    fn run(self: Box<Self>) -> Vec<u8> {
+        self.response.ok().filter(|entity| match entity {
+            OneOrMany::One(_) => true,
+            OneOrMany::Many(values) => !values.is_empty(),
+        }).map(|entity| {
+            match entity {
+                OneOrMany::One(value) => {
+                    format!("${}\r\n{}\r\n", value.len(), value).into_bytes()
+                }
+                OneOrMany::Many(values) => {
+                    let body: String = values
+                        .iter()
+                        .map(|value| format!("${}\r\n{}\r\n", value.len(), value))
+                        .collect();
+                    format!("*{}\r\n{}", values.len(), body).into_bytes()
+                }
+            }
+        }).unwrap_or(b"$-1\r\n".to_vec())
     }
 }

@@ -1,52 +1,64 @@
 use std::io::{Error, ErrorKind};
 use std::time::{Duration, SystemTime};
-use crate::command::{CommandRunner, CommandRunnerFactory};
+use crate::command::{DataRequester, CommandFactory, CommandRunner};
 use crate::key_value_store::KeyValueStore;
 use crate::KeyValueStoreStringEntry;
 
-pub struct SetCommand {
+pub struct SetCommandRequest {
     key: String,
     value: String,
-    expiry: Option<Duration>,
+    calculated_expiry: Option<SystemTime>,
 }
 
-impl CommandRunner for SetCommand {
-    fn run(self: Box<Self>, store: &mut Box<dyn KeyValueStore>) -> Vec<u8> {
-        let calculated_expiry: Option<SystemTime> = match self.expiry {
-            Some(duration) => Some(SystemTime::now() + duration),
-            None => None,
-        };
+struct SetCommandResponse {}
 
-        store.insert(
-            self.key,
-            Box::new(KeyValueStoreStringEntry {
-                value: self.value,
-                expiry: calculated_expiry
-            }));
+impl SetCommandResponse {
+    fn new() -> Self {
+        SetCommandResponse {}
+    }
+}
 
+impl CommandRunner for SetCommandResponse {
+    fn run(self: Box<Self>) -> Vec<u8> {
         "+OK\r\n".as_bytes().to_vec()
     }
 }
 
-impl CommandRunnerFactory for SetCommand {
+impl DataRequester for SetCommandRequest {
+    fn request(self: Box<Self>, store: &mut Box<dyn KeyValueStore>) -> Box<dyn CommandRunner> {
+        store.insert(
+            self.key,
+            Box::new(KeyValueStoreStringEntry {
+                value: self.value,
+                expiry: self.calculated_expiry
+            }));
+
+        Box::new(SetCommandResponse::new())
+    }
+}
+
+impl CommandFactory for SetCommandRequest {
     fn new(arguments: &[&str]) -> Result<Box<Self>, Error> {
         if arguments.len() < 2 {
             return Err(Error::new(ErrorKind::InvalidInput, "Expected at least two arguments"));
         }
 
         if arguments.len() == 4 && arguments[2].eq_ignore_ascii_case("px") {
+            let expiry_time: Duration = Duration::from_millis(arguments[3].parse().unwrap());
+            let calculated_expiry: SystemTime = SystemTime::now() + expiry_time;
+            
             return Ok(Box::new(
-                SetCommand {
+                SetCommandRequest {
                     key: String::from(arguments[0]),
                     value: String::from(arguments[1]),
-                    expiry: Some(Duration::from_millis(arguments[3].parse().unwrap())),
+                    calculated_expiry: Some(calculated_expiry),
                 }));
         }
 
-        Ok(Box::new(SetCommand {
+        Ok(Box::new(SetCommandRequest {
             key: String::from(arguments[0]),
             value: String::from(arguments[1]),
-            expiry: None
+            calculated_expiry: None
         }))
     }
 }

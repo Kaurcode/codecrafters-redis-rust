@@ -1,11 +1,6 @@
 use std::io::{Error, ErrorKind};
-use crate::command::{CommandRunner, CommandRunnerFactory};
+use crate::command::{DataRequester, CommandFactory, CommandRunner};
 use crate::key_value_store::{KeyValueStore, KeyValueStoreEntry, KeyValueStoreListEntry};
-
-pub struct RPushCommand {
-    key: String,
-    values: Vec<String>,
-}
 
 fn _push(store: &mut Box<dyn KeyValueStore>, key: String, value: String) -> Result<usize, &'static str> {
     if let Some(entry) = store.get_mut(&key) {
@@ -29,25 +24,45 @@ fn append(store: &mut Box<dyn KeyValueStore>, key: String, other: &mut Vec<Strin
     return_value
 }
 
-impl CommandRunner for RPushCommand {
-    fn run(mut self: Box<Self>, store: &mut Box<dyn KeyValueStore>) -> Vec<u8> {
-        if let Ok(size) = append(store, self.key, &mut self.values) {
-            return format!(":{}\r\n", size).into_bytes()
-        }
-        "$-1\r\n".as_bytes().to_vec()
-    }
+pub struct RPushRequest {
+    key: String,
+    values: Vec<String>,
 }
 
-impl CommandRunnerFactory for RPushCommand {
+struct RPushResult {
+    length: Result<usize, &'static str>,
+}
+
+impl CommandFactory for RPushRequest {
     fn new(arguments: &[&str]) -> Result<Box<Self>, Error> {
         if arguments.len() < 2 {
             return Err(Error::new(ErrorKind::InvalidInput, "Expected at least two arguments"));
         }
-        
+
         Ok(Box::new(
-            RPushCommand { 
-                key: String::from(arguments[0]), 
+            RPushRequest {
+                key: String::from(arguments[0]),
                 values: arguments[1..].iter().map(|s| s.to_string()).collect(),
             }))
+    }
+}
+
+impl RPushResult {
+    fn new(length: Result<usize, &'static str>) -> Self {
+        RPushResult { length }
+    }
+}
+
+impl DataRequester for RPushRequest {
+    fn request(mut self: Box<Self>, store: &mut Box<dyn KeyValueStore>) -> Box<dyn CommandRunner> {
+        Box::new(RPushResult::new(append(store, self.key, &mut self.values)))
+    }
+}
+
+impl CommandRunner for RPushResult {
+    fn run(self: Box<Self>) -> Vec<u8> {
+        self.length.map_or_else(
+            |_| "$-1\r\n".as_bytes().to_vec(), 
+            |size| format!(":{}\r\n", size).into_bytes())
     }
 }

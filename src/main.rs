@@ -5,7 +5,7 @@ mod parser;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, oneshot};
-use crate::command::CommandRunner;
+use crate::command::{CommandRunner, DataRequester};
 use crate::key_value_store::{InMemoryKeyValueStore, KeyValueStore, KeyValueStoreStringEntry};
 use crate::parser::redis_parser;
 
@@ -17,7 +17,7 @@ async fn main() {
     let (tx, rx) = mpsc::channel::<Msg>(100);
 
     tokio::spawn(async move {
-        command_executor(rx).await;
+        data_manager(rx).await;
     });
 
     loop {
@@ -40,17 +40,17 @@ async fn main() {
 
 }
 
-type Msg = (Box<dyn CommandRunner + Send + 'static>, oneshot::Sender<Vec<u8>>);
+type Msg = (Box<dyn DataRequester + Send>, oneshot::Sender<Box<dyn CommandRunner + Send>>);
 
-async fn command_executor(mut rx: mpsc::Receiver<Msg>) {
+async fn data_manager(mut rx: mpsc::Receiver<Msg>) {
     let mut key_value_store: Box<dyn KeyValueStore> = Box::new(InMemoryKeyValueStore::new());
 
     while let Some((command, tx)) = rx.recv().await {
-        let _ = tx.send(command.run(&mut key_value_store));
+        let _ = tx.send(command.request(&mut key_value_store));
     }
 }
 
-async fn handle_client(mut stream: TcpStream, tx: mpsc::Sender<Msg>) {
+async fn handle_client(mut stream: TcpStream, store_tx: mpsc::Sender<Msg>) {
     let mut buffer: [u8; 512] = [0; 512];
 
     while let Ok(buffer_length) = stream.read(&mut buffer).await {
@@ -74,9 +74,13 @@ async fn handle_client(mut stream: TcpStream, tx: mpsc::Sender<Msg>) {
             }
         };
 
-        let (oneshot_tx, rx): (oneshot::Sender<Vec<u8>>, oneshot::Receiver<Vec<u8>>) = oneshot::channel::<Vec<u8>>();
-        tx.send((command, oneshot_tx)).await.unwrap();
+        let (oneshot_data_tx, data_rx): 
+            (oneshot::Sender<Box<dyn CommandRunner + Send>>, 
+             oneshot::Receiver<Box<dyn CommandRunner + Send>>) 
+            = oneshot::channel();
+        
+        store_tx.send((command, oneshot_data_tx)).await.unwrap();
 
-        stream.write_all(&rx.await.unwrap()).await.unwrap();
+        stream.write_all(&data_rx.await.unwrap().run()).await.unwrap();
     }
 }

@@ -1,14 +1,14 @@
 use std::io::{Error, ErrorKind};
-use crate::command::{CommandRunner, CommandRunnerFactory};
+use crate::command::{DataRequester, CommandFactory};
 use crate::command::echo::EchoCommand;
-use crate::command::get::GetCommand;
+use crate::command::get::GetCommandRequest;
 use crate::command::llen::LLenCommand;
-use crate::command::lpop::LPopCommand;
-use crate::command::lpush::LPushCommand;
-use crate::command::lrange::LRangeCommand;
+use crate::command::lpop::LPopRequest;
+use crate::command::lpush::LPushRequest;
+use crate::command::lrange::LRangeRequest;
 use crate::command::ping::PingCommand;
-use crate::command::rpush::RPushCommand;
-use crate::command::set::SetCommand;
+use crate::command::rpush::RPushRequest;
+use crate::command::set::SetCommandRequest;
 
 fn parse_bulk_string<'a>(length_line: &str, content: &'a str) -> Result<&'a str, &'static str> {
     if !length_line.starts_with('$') {
@@ -26,7 +26,7 @@ fn parse_bulk_string<'a>(length_line: &str, content: &'a str) -> Result<&'a str,
     Ok(content)
 }
 
-pub fn redis_parser(command: &str) -> Result<Box<dyn CommandRunner>, Error> {
+pub fn redis_parser(command: &str) -> Result<Box<dyn DataRequester>, Error> {
     let lines: Vec<&str> = command.split("\r\n").collect();
 
     let argument_count_line: &str = lines.get(0).ok_or_else(|| {
@@ -61,15 +61,15 @@ pub fn redis_parser(command: &str) -> Result<Box<dyn CommandRunner>, Error> {
     }
 
     match command.to_ascii_lowercase().as_str() {
-        "ping" => PingCommand::new_command_runner(&verified_arguments),
-        "echo" => EchoCommand::new_command_runner(&verified_arguments),
-        "set" => SetCommand::new_command_runner(&verified_arguments),
-        "get" => GetCommand::new_command_runner(&verified_arguments),
-        "rpush" => RPushCommand::new_command_runner(&verified_arguments),
-        "lpush" => LPushCommand::new_command_runner(&verified_arguments),
-        "lrange" => LRangeCommand::new_command_runner(&verified_arguments),
-        "llen" => LLenCommand::new_command_runner(&verified_arguments),
-        "lpop" => LPopCommand::new_command_runner(&verified_arguments),
+        "ping" => PingCommand::new_command(&verified_arguments),
+        "echo" => EchoCommand::new_command(&verified_arguments),
+        "set" => SetCommandRequest::new_command(&verified_arguments),
+        "get" => GetCommandRequest::new_command(&verified_arguments),
+        "rpush" => RPushRequest::new_command(&verified_arguments),
+        "lpush" => LPushRequest::new_command(&verified_arguments),
+        "lrange" => LRangeRequest::new_command(&verified_arguments),
+        "llen" => LLenCommand::new_command(&verified_arguments),
+        "lpop" => LPopRequest::new_command(&verified_arguments),
         _ => Err(Error::new(ErrorKind::InvalidInput, "Unknown command")),
     }
 }
