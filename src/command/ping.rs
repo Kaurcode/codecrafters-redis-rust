@@ -1,5 +1,5 @@
 use std::io::{Error, ErrorKind};
-use crate::command::{DataRequester, CommandFactory, CommandRunner};
+use crate::command::{DataRequester, CommandFactory, CommandRunner, Reply};
 use crate::key_value_store::KeyValueStore;
 
 pub struct PingCommand {}
@@ -21,7 +21,7 @@ impl DataRequester for PingCommand {
 }
 
 impl CommandRunner for PingCommand {
-    fn run(self: Box<Self>) -> Vec<u8> {
-        b"+PONG\r\n".to_vec()
+    fn run(self: Box<Self>) -> Reply {
+        Reply::Immediate(b"+PONG\r\n".to_vec())
     }
 }

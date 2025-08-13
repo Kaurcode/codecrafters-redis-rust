@@ -1,5 +1,5 @@
 use std::io::{Error, ErrorKind};
-use crate::command::{DataRequester, CommandFactory, CommandRunner};
+use crate::command::{DataRequester, CommandFactory, CommandRunner, Reply};
 use crate::key_value_store::KeyValueStore;
 
 pub struct LLenCommand {
@@ -38,7 +38,7 @@ impl DataRequester for LLenCommand {
 }
 
 impl CommandRunner for LLenResponse {
-    fn run(self: Box<Self>) -> Vec<u8> { 
-        format!(":{}\r\n", self.length).into_bytes()
+    fn run(self: Box<Self>) -> Reply { 
+        Reply::Immediate(format!(":{}\r\n", self.length).into_bytes())
     }
 }

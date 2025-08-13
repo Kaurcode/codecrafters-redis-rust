@@ -1,5 +1,5 @@
 use std::io::{Error, ErrorKind};
-use crate::command::{DataRequester, CommandFactory, CommandRunner};
+use crate::command::{DataRequester, CommandFactory, CommandRunner, Reply};
 use crate::key_value_store::KeyValueStore;
 
 pub struct EchoCommand {
@@ -23,7 +23,7 @@ impl DataRequester for EchoCommand {
 }
 
 impl CommandRunner for EchoCommand {
-    fn run(self: Box<Self>) -> Vec<u8> {
-        format!("${}\r\n{}\r\n", self.body.len(), self.body).into_bytes()
+    fn run(self: Box<Self>) -> Reply {
+        Reply::Immediate(format!("${}\r\n{}\r\n", self.body.len(), self.body).into_bytes())
     }
 }

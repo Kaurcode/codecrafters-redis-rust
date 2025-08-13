@@ -5,7 +5,7 @@ mod parser;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, oneshot};
-use crate::command::{CommandRunner, DataRequester};
+use crate::command::{CommandRunner, DataRequester, Reply};
 use crate::key_value_store::{InMemoryKeyValueStore, KeyValueStore, KeyValueStoreStringEntry};
 use crate::parser::redis_parser;
 
@@ -40,7 +40,8 @@ async fn main() {
 
 }
 
-type Msg = (Box<dyn DataRequester + Send>, oneshot::Sender<Box<dyn CommandRunner + Send>>);
+type Msg = (Box<dyn DataRequester + Send + 'static>, 
+            oneshot::Sender<Box<dyn CommandRunner + Send + 'static>>);
 
 async fn data_manager(mut rx: mpsc::Receiver<Msg>) {
     let mut key_value_store: Box<dyn KeyValueStore> = Box::new(InMemoryKeyValueStore::new());
@@ -75,12 +76,18 @@ async fn handle_client(mut stream: TcpStream, store_tx: mpsc::Sender<Msg>) {
         };
 
         let (oneshot_data_tx, data_rx): 
-            (oneshot::Sender<Box<dyn CommandRunner + Send>>, 
-             oneshot::Receiver<Box<dyn CommandRunner + Send>>) 
+            (oneshot::Sender<Box<dyn CommandRunner + Send + 'static>>, 
+             oneshot::Receiver<Box<dyn CommandRunner + Send + 'static>>) 
             = oneshot::channel();
         
         store_tx.send((command, oneshot_data_tx)).await.unwrap();
+        
+        let runner: Box<dyn CommandRunner + Send> = data_rx.await.unwrap();
+        let response: Vec<u8> = match runner.run() {
+            Reply::Immediate(bytes) => bytes,
+            Reply::Deferred(future) => future.await,
+        };
 
-        stream.write_all(&data_rx.await.unwrap().run()).await.unwrap();
+        stream.write_all(&response).await.unwrap();
     }
 }

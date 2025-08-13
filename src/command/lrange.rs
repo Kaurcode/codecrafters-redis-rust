@@ -1,5 +1,5 @@
 use std::io::{Error, ErrorKind};
-use crate::command::{DataRequester, CommandFactory, CommandRunner};
+use crate::command::{DataRequester, CommandFactory, CommandRunner, Reply};
 use crate::key_value_store::KeyValueStore;
 
 pub struct LRangeRequest {
@@ -56,14 +56,18 @@ impl DataRequester for LRangeRequest {
 }
 
 impl CommandRunner for LRangeResponse {
-    fn run(self: Box<Self>) -> Vec<u8> {
-        if let Ok(slice) = self.subslice {
-            let body: String = slice
-                .iter()
-                .map(|value: &String| format!("${}\r\n{}\r\n", value.len(), value))
-                .collect();
-            return format!("*{}\r\n{}", slice.len(), body).into_bytes()
-        }
-        "$-1\r\n".as_bytes().to_vec()
+    fn run(self: Box<Self>) -> Reply {
+        let reply: Vec<u8> = match self.subslice {
+            Ok(slice) => {
+                let body: String = slice
+                    .iter()
+                    .map(|value: &String| format!("${}\r\n{}\r\n", value.len(), value))
+                    .collect();
+                format!("*{}\r\n{}", slice.len(), body).into_bytes()
+            },
+            Err(_) => "$-1\r\n".as_bytes().to_vec(),
+        };
+        
+        Reply::Immediate(reply)
     }
 }

@@ -1,5 +1,5 @@
 use std::io::{Error, ErrorKind};
-use crate::command::{DataRequester, CommandFactory, CommandRunner};
+use crate::command::{DataRequester, CommandFactory, CommandRunner, Reply};
 use crate::key_value_store::{KeyValueStore, KeyValueStoreEntry, KeyValueStoreListEntry};
 
 fn _push(store: &mut Box<dyn KeyValueStore>, key: String, value: String) -> Result<usize, &'static str> {
@@ -60,9 +60,11 @@ impl DataRequester for RPushRequest {
 }
 
 impl CommandRunner for RPushResult {
-    fn run(self: Box<Self>) -> Vec<u8> {
-        self.length.map_or_else(
+    fn run(self: Box<Self>) -> Reply {
+        let reply: Vec<u8> = self.length.map_or_else(
             |_| "$-1\r\n".as_bytes().to_vec(), 
-            |size| format!(":{}\r\n", size).into_bytes())
+            |size| format!(":{}\r\n", size).into_bytes());
+        
+        Reply::Immediate(reply)
     }
 }

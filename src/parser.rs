@@ -1,5 +1,6 @@
 use std::io::{Error, ErrorKind};
 use crate::command::{DataRequester, CommandFactory};
+use crate::command::blpop::BLPopRequest;
 use crate::command::echo::EchoCommand;
 use crate::command::get::GetCommandRequest;
 use crate::command::llen::LLenCommand;
@@ -26,7 +27,7 @@ fn parse_bulk_string<'a>(length_line: &str, content: &'a str) -> Result<&'a str,
     Ok(content)
 }
 
-pub fn redis_parser(command: &str) -> Result<Box<dyn DataRequester>, Error> {
+pub fn redis_parser(command: &str) -> Result<Box<dyn DataRequester + 'static>, Error> {
     let lines: Vec<&str> = command.split("\r\n").collect();
 
     let argument_count_line: &str = lines.get(0).ok_or_else(|| {
@@ -70,6 +71,7 @@ pub fn redis_parser(command: &str) -> Result<Box<dyn DataRequester>, Error> {
         "lrange" => LRangeRequest::new_command(&verified_arguments),
         "llen" => LLenCommand::new_command(&verified_arguments),
         "lpop" => LPopRequest::new_command(&verified_arguments),
+        "blpop" => BLPopRequest::new_command(&verified_arguments),
         _ => Err(Error::new(ErrorKind::InvalidInput, "Unknown command")),
     }
 }

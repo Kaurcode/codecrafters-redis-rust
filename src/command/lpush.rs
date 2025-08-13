@@ -1,5 +1,5 @@
 use std::io::{Error, ErrorKind};
-use crate::command::{DataRequester, CommandFactory, CommandRunner};
+use crate::command::{DataRequester, CommandFactory, CommandRunner, Reply};
 use crate::key_value_store::{KeyValueStore, KeyValueStoreEntry, KeyValueStoreListEntry};
 
 pub struct LPushRequest {
@@ -49,9 +49,11 @@ impl DataRequester for LPushRequest {
 }
 
 impl CommandRunner for LPushResponse {
-    fn run(self: Box<Self>) -> Vec<u8> {
-        self.length.map_or_else(
+    fn run(self: Box<Self>) -> Reply {
+        let reply: Vec<u8> = self.length.map_or_else(
             |_| "$-1\r\n".as_bytes().to_vec(), 
-            |size| format!(":{}\r\n", size).into_bytes())
+            |size| format!(":{}\r\n", size).into_bytes());
+        
+        Reply::Immediate(reply)
     }
 }

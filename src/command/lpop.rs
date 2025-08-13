@@ -1,5 +1,5 @@
 use std::io::{Error, ErrorKind};
-use crate::command::{DataRequester, CommandFactory, CommandRunner};
+use crate::command::{DataRequester, CommandFactory, CommandRunner, Reply};
 use crate::key_value_store::KeyValueStore;
 
 pub struct LPopRequest {
@@ -58,8 +58,8 @@ impl DataRequester for LPopRequest {
 }
 
 impl CommandRunner for LPopResponse {
-    fn run(self: Box<Self>) -> Vec<u8> {
-        self.response.ok().filter(|entity| match entity {
+    fn run(self: Box<Self>) -> Reply {
+        let reply: Vec<u8> = self.response.ok().filter(|entity| match entity {
             OneOrMany::One(_) => true,
             OneOrMany::Many(values) => !values.is_empty(),
         }).map(|entity| {
@@ -75,6 +75,8 @@ impl CommandRunner for LPopResponse {
                     format!("*{}\r\n{}", values.len(), body).into_bytes()
                 }
             }
-        }).unwrap_or(b"$-1\r\n".to_vec())
+        }).unwrap_or(b"$-1\r\n".to_vec());
+        
+        Reply::Immediate(reply)
     }
 }

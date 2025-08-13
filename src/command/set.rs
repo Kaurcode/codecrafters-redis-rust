@@ -1,6 +1,6 @@
 use std::io::{Error, ErrorKind};
 use std::time::{Duration, SystemTime};
-use crate::command::{DataRequester, CommandFactory, CommandRunner};
+use crate::command::{DataRequester, CommandFactory, CommandRunner, Reply};
 use crate::key_value_store::KeyValueStore;
 use crate::KeyValueStoreStringEntry;
 
@@ -12,15 +12,35 @@ pub struct SetCommandRequest {
 
 struct SetCommandResponse {}
 
-impl SetCommandResponse {
-    fn new() -> Self {
-        SetCommandResponse {}
+impl CommandFactory for SetCommandRequest {
+    fn new(arguments: &[&str]) -> Result<Box<Self>, Error> {
+        if arguments.len() < 2 {
+            return Err(Error::new(ErrorKind::InvalidInput, "Expected at least two arguments"));
+        }
+
+        if arguments.len() == 4 && arguments[2].eq_ignore_ascii_case("px") {
+            let expiry_time: Duration = Duration::from_millis(arguments[3].parse().unwrap());
+            let calculated_expiry: SystemTime = SystemTime::now() + expiry_time;
+
+            return Ok(Box::new(
+                SetCommandRequest {
+                    key: String::from(arguments[0]),
+                    value: String::from(arguments[1]),
+                    calculated_expiry: Some(calculated_expiry),
+                }));
+        }
+
+        Ok(Box::new(SetCommandRequest {
+            key: String::from(arguments[0]),
+            value: String::from(arguments[1]),
+            calculated_expiry: None
+        }))
     }
 }
 
-impl CommandRunner for SetCommandResponse {
-    fn run(self: Box<Self>) -> Vec<u8> {
-        "+OK\r\n".as_bytes().to_vec()
+impl SetCommandResponse {
+    fn new() -> Self {
+        SetCommandResponse {}
     }
 }
 
@@ -37,28 +57,8 @@ impl DataRequester for SetCommandRequest {
     }
 }
 
-impl CommandFactory for SetCommandRequest {
-    fn new(arguments: &[&str]) -> Result<Box<Self>, Error> {
-        if arguments.len() < 2 {
-            return Err(Error::new(ErrorKind::InvalidInput, "Expected at least two arguments"));
-        }
-
-        if arguments.len() == 4 && arguments[2].eq_ignore_ascii_case("px") {
-            let expiry_time: Duration = Duration::from_millis(arguments[3].parse().unwrap());
-            let calculated_expiry: SystemTime = SystemTime::now() + expiry_time;
-            
-            return Ok(Box::new(
-                SetCommandRequest {
-                    key: String::from(arguments[0]),
-                    value: String::from(arguments[1]),
-                    calculated_expiry: Some(calculated_expiry),
-                }));
-        }
-
-        Ok(Box::new(SetCommandRequest {
-            key: String::from(arguments[0]),
-            value: String::from(arguments[1]),
-            calculated_expiry: None
-        }))
+impl CommandRunner for SetCommandResponse {
+    fn run(self: Box<Self>) -> Reply {
+        Reply::Immediate("+OK\r\n".as_bytes().to_vec())
     }
 }
