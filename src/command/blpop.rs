@@ -3,7 +3,7 @@ use std::io::{Error, ErrorKind};
 use std::time::Duration;
 use tokio::sync::oneshot;
 use crate::command::{CommandFactory, CommandRunner, DataRequester, Reply};
-use crate::key_value_store::KeyValueStore;
+use crate::key_value_store::{KeyValueStore, KeyValueStoreListEntry};
 
 pub struct BLPopRequest {
     key: String,
@@ -53,14 +53,15 @@ impl BLPopResponse {
 
 impl DataRequester for BLPopRequest {
     fn request(self: Box<Self>, store: &mut Box<dyn KeyValueStore>) -> Box<dyn CommandRunner> {
-        if let Some(entity) = store.get_mut(&self.key) {
-            match entity.generate_blpop_waiter() {
-                Ok(rx) => Box::new(BLPopResponse::new(self.key, self.timeout, rx)),
-                Err(err) => Box::new(BLPopResponse::new_err(self.key, err)),
-            }
-        } else {
-            Box::new(BLPopResponse::new_err(self.key, "Key not found"))
-        }
+        let entry = store
+            .ensure_exists_and_get_mut(self.key.clone(), KeyValueStoreListEntry::new_boxed);
+        
+        let response: Box<BLPopResponse> = match entry.generate_blpop_waiter() {
+            Ok(rx) => Box::new(BLPopResponse::new(self.key, self.timeout, rx)),
+            Err(err) => Box::new(BLPopResponse::new_err(self.key, err)),
+        };
+        
+        response
     }
 }
 

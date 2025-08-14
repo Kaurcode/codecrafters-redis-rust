@@ -1,5 +1,6 @@
 use std::cmp::min;
 use std::collections::{HashMap, VecDeque};
+use std::collections::hash_map::Entry;
 use std::time::SystemTime;
 use tokio::sync::oneshot;
 
@@ -13,6 +14,11 @@ pub trait KeyValueStore: Send {
     fn get(&self, key: &str) -> Option<&Box<dyn KeyValueStoreEntry>>;
     fn get_mut(&mut self, key: &str) -> Option<&mut Box<dyn KeyValueStoreEntry>>;
     fn remove(&mut self, key: &str) -> Option<Box<dyn KeyValueStoreEntry>>;
+    fn ensure_exists_and_get_mut(
+        &mut self, 
+        key: String, 
+        factory_fn: fn() -> Box<dyn KeyValueStoreEntry>
+    ) -> &mut Box<dyn KeyValueStoreEntry>;
 }
 
 pub struct InMemoryKeyValueStore {
@@ -39,11 +45,24 @@ impl KeyValueStore for InMemoryKeyValueStore {
     fn get(&self, key: &str) -> Option<&Box<dyn KeyValueStoreEntry>> {
         self.store.get(key)
     }
+    
     fn get_mut(&mut self, key: &str) -> Option<&mut Box<dyn KeyValueStoreEntry>> {
         self.store.get_mut(key)
     }
+    
     fn remove(&mut self, key: &str) -> Option<Box<dyn KeyValueStoreEntry>> {
         self.store.remove(key)
+    }
+    
+    fn ensure_exists_and_get_mut(
+        &mut self, 
+        key: String, 
+        factory_fn: fn() -> Box<dyn KeyValueStoreEntry> 
+    ) -> &mut Box<dyn KeyValueStoreEntry> { 
+        match self.store.entry(key) { 
+            Entry::Occupied(o) => o.into_mut(), 
+            Entry::Vacant(v) => v.insert(factory_fn()), 
+        } 
     }
 }
 
@@ -120,6 +139,10 @@ impl KeyValueStoreListEntry {
             expiry: None,
             blpop_waiting_channels: VecDeque::new(),
         }
+    }
+    
+    pub fn new_boxed() -> Box<dyn KeyValueStoreEntry> {
+        Box::new(KeyValueStoreListEntry::new())
     }
     
     pub fn _new_with_expiry(expiry: Option<SystemTime>) -> Self {
