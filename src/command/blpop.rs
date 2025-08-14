@@ -27,14 +27,14 @@ impl CommandFactory for BLPopRequest {
         }
         
         let key: String = arguments[0].to_string();
-        let timeout: u64 = arguments[1]
+        let timeout: f64 = arguments[1]
             .parse()
             .map_err(|_| Error::new(
-                ErrorKind::InvalidInput, "Timeout must be an unsigned integer"))?;
-        let timeout: Option<Duration> = if timeout == 0 {
+                ErrorKind::InvalidInput, "Timeout must be a positive floating point number"))?;
+        let timeout: Option<Duration> = if timeout == 0.0 {
             None
         } else {
-            Some(Duration::from_secs(timeout))
+            Some(Duration::from_secs_f64(timeout))
         };
         
         Ok(Box::new(BLPopRequest { key, timeout }))
